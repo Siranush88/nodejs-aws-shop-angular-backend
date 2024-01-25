@@ -60,6 +60,12 @@ export class ImportServiceStack extends cdk.Stack {
     const api = new apigateway.RestApi(this, "ImportApi", {
       restApiName: "Import API",
       description: "API for importing products",
+      defaultCorsPreflightOptions: {
+        allowOrigins: ["*"],
+        allowMethods: ["*"],
+        allowHeaders: ["*"],
+        //allowCredentials: true,
+      },
     });
 
     const importIntegration = new apigateway.LambdaIntegration(
@@ -68,6 +74,7 @@ export class ImportServiceStack extends cdk.Stack {
 
     const importResource = api.root.addResource("import");
     importResource.addMethod("GET", importIntegration);
+    //importResource.addMethod("PUT", importIntegration);
 
     new cdk.CfnOutput(this, "ImportBucketOutput", {
       value: importBucket.bucketName,
