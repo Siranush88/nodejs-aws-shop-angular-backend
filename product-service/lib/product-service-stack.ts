@@ -3,6 +3,10 @@ import { Runtime } from "@aws-cdk/aws-lambda";
 import * as lambda from "@aws-cdk/aws-lambda-nodejs";
 import * as cdk from "@aws-cdk/core";
 import * as dynamodb from "@aws-cdk/aws-dynamodb";
+import * as sqs from "@aws-cdk/aws-sqs"; //
+import { SqsEventSource } from "@aws-cdk/aws-lambda-event-sources"; //
+import * as sns from "@aws-cdk/aws-sns";
+import * as snsSubscriptions from "@aws-cdk/aws-sns-subscriptions";
 
 export class ProductServiceStack extends cdk.Stack {
   constructor(scope: cdk.Construct, id: string, props?: cdk.StackProps) {
@@ -50,9 +54,33 @@ export class ProductServiceStack extends cdk.Stack {
       }
     );
 
+    const catalogBatchProcessLambda = new lambda.NodejsFunction(
+      this,
+      "CatalogBatchProcessLambda",
+      {
+        ...sharedLambdaProps,
+        functionName: "MyCustomCatalogBatchFunction",
+        entry: "src/handlers/catalogBatchProcess.ts",
+      }
+    );
+
+    const catalogItemsQueue = new sqs.Queue(this, "CatalogItemsQueue", {
+      visibilityTimeout: cdk.Duration.seconds(30),
+    });
+
+    catalogBatchProcessLambda.addEventSource(
+      new SqsEventSource(catalogItemsQueue, { batchSize: 5 })
+    );
+
+    const createProductTopic = new sns.Topic(this, "createProductTopic");
+
+    createProductTopic.addSubscription(
+      new snsSubscriptions.EmailSubscription("siranush.zakaryan.job@gmail.com")
+    );
+
     const api = new apigateway.RestApi(this, "ProductApi", {
       defaultCorsPreflightOptions: {
-        allowOrigins: ["https://d1xdvo0sx4nur6.cloudfront.net"],
+        allowOrigins: ["*"],
         allowMethods: apigateway.Cors.ALL_METHODS,
       },
     });
@@ -71,6 +99,11 @@ export class ProductServiceStack extends cdk.Stack {
     new cdk.CfnOutput(this, "ProductApiUrl", {
       value: api.urlForPath(productsResource.path),
       description: "The endpoint for /products",
+    });
+
+    new cdk.CfnOutput(this, "CreateProductTopicArn", {
+      value: createProductTopic.topicArn,
+      description: "ARN of the Create Product SNS Topic",
     });
   }
 }
