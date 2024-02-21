@@ -1,0 +1,22 @@
+# I don't need docker files in the image
+
+Dockerfile
+.dockerignore
+
+# I don't need cdk in the image
+
+cdk/
+
+# I do `npm run build` in the image
+
+dist/
+
+# I do `npm i` in the image
+
+node_modules/
+
+# ignore git things just in case :shrug:
+
+.git
+
+.gitignore
