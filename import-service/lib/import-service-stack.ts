@@ -1,14 +1,42 @@
 import * as s3 from "@aws-cdk/aws-s3";
 import * as cdk from "@aws-cdk/core";
-import * as lambda_1 from "@aws-cdk/aws-lambda-nodejs"; // Update import
+import * as lambda_1 from "@aws-cdk/aws-lambda-nodejs";
 import * as lambda_2 from "@aws-cdk/aws-lambda";
 import * as apigateway from "@aws-cdk/aws-apigateway";
 import { S3EventSource } from "@aws-cdk/aws-lambda-event-sources";
 import { Runtime } from "@aws-cdk/aws-lambda";
+import {
+  Effect,
+  PolicyStatement,
+  Role,
+  ServicePrincipal,
+} from "@aws-cdk/aws-iam";
 
 export class ImportServiceStack extends cdk.Stack {
   constructor(scope: cdk.Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
+
+    const importBasicAuthorizer = cdk.Fn.importValue("BasicAuthorizerArn");
+
+    const basicAuthorizer = lambda_2.Function.fromFunctionArn(
+      this,
+      "importBasicAuthorizer",
+      importBasicAuthorizer
+    );
+
+    const invokeTokenAuthRole = new Role(this, "Role", {
+      roleName: "InvokeTokenAuthRole",
+      assumedBy: new ServicePrincipal("apigateway.amazonaws.com"),
+    });
+
+    const InvokeTokenPolicyStatement = new PolicyStatement({
+      effect: Effect.ALLOW,
+      sid: "AllowInvokeLambda",
+      resources: [basicAuthorizer.functionArn],
+      actions: ["lambda:InvokeFunction"],
+    });
+
+    invokeTokenAuthRole.addToPolicy(InvokeTokenPolicyStatement);
 
     const existingBucketName = "siranush88-import-service-bucket";
     const importBucket: any = s3.Bucket.fromBucketName(
@@ -64,7 +92,7 @@ export class ImportServiceStack extends cdk.Stack {
         allowOrigins: ["*"],
         allowMethods: ["*"],
         allowHeaders: ["*"],
-        //allowCredentials: true,
+        allowCredentials: true,
       },
     });
 
@@ -73,8 +101,15 @@ export class ImportServiceStack extends cdk.Stack {
     );
 
     const importResource = api.root.addResource("import");
-    importResource.addMethod("GET", importIntegration);
-    //importResource.addMethod("PUT", importIntegration);
+
+    importResource.addMethod("GET", importIntegration, {
+      authorizationType: apigateway.AuthorizationType.CUSTOM,
+      authorizer: new apigateway.TokenAuthorizer(this, "MyLambdaAuthorizer", {
+        handler: basicAuthorizer,
+        assumeRole: invokeTokenAuthRole,
+        resultsCacheTtl: cdk.Duration.seconds(0),
+      }),
+    });
 
     new cdk.CfnOutput(this, "ImportBucketOutput", {
       value: importBucket.bucketName,
